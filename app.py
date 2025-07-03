@@ -80,10 +80,11 @@ def main():
     st.markdown("<div class='poker-header'>♠️ Poker Buy-ins Manager ♥️</div>", unsafe_allow_html=True)
     db = DatabaseManager('poker.db')
 
-    # Global session selector
+        # Global session selector
     sessions = db.list_sessions()
     session_ids = [s['session_id'] for s in sessions]
     if session_ids:
+        # Persist current session selection via session_state
         if 'current_session' not in st.session_state or st.session_state['current_session'] not in session_ids:
             st.session_state['current_session'] = session_ids[0]
         selected_session = st.selectbox(
@@ -91,7 +92,6 @@ def main():
             session_ids,
             index=session_ids.index(st.session_state['current_session']),
             key="current_session",
-            on_change=lambda: st.session_state.update({'current_session': st.session_state['current_session']})
         )
     else:
         st.warning("No sessions available. Please create one in Manage Sessions.")
