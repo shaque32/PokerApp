@@ -147,7 +147,6 @@ def main():
                     st.success(f"Added: {player} - $ {amt}")
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # Tab 2: Sessions Overview
     with tabs[2]:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Sessions Overview")
@@ -185,7 +184,6 @@ def main():
                             pl.append({'player':row['player'],'total_buyin':row['total_buyin'],'ending_stack':amt,'profit_loss':diff})
                         st.session_state['pl_results'] = pl
                 else:
-                    # show stored results directly
                     df_pl = pd.DataFrame(st.session_state['pl_results'])
                     st.subheader("Profit/Loss Summary")
                     st.dataframe(df_pl, use_container_width=True)
