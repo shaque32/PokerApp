@@ -111,7 +111,7 @@ def main():
         if st.button("Create Session", key="btn_create_session") and new_name:
             db.create_session(new_name)
             st.session_state['current_session'] = new_name
-            st.experimental_rerun()
+            
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             db.conn.execute("DELETE FROM payouts")
             db.conn.execute("DELETE FROM buyins")
