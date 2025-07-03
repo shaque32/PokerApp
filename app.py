@@ -184,7 +184,6 @@ def main():
                             diff = amt - row['total_buyin']
                             pl.append({'player':row['player'],'total_buyin':row['total_buyin'],'ending_stack':amt,'profit_loss':diff})
                         st.session_state['pl_results'] = pl
-                        st.experimental_rerun()
                 else:
                     # show stored results directly
                     df_pl = pd.DataFrame(st.session_state['pl_results'])
