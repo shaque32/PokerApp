@@ -69,29 +69,34 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Initialize buy-in queue
-if 'buyin_queue' not in st.session_state:
-    st.session_state['buyin_queue'] = []
-
 # Main app
 def main():
     st.markdown("<div class='poker-header'>♠️ Poker Buy-ins Manager ♥️</div>", unsafe_allow_html=True)
     db = DatabaseManager('poker.db')
+
+    # Global session selector
+    sessions = db.list_sessions()
+    session_ids = [s['session_id'] for s in sessions]
+    if session_ids:
+        selected_session = st.selectbox("Select Session", session_ids, key="current_session")
+    else:
+        st.warning("No sessions available. Please create one in Manage Sessions.")
+        selected_session = None
+
     tabs = st.tabs(["Manage Sessions", "Add Buy-in", "Sessions", "Payouts", "Settlement"])
 
-    # Manage Sessions
+    # Tab 0: Manage Sessions
     with tabs[0]:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("🎴 Manage Sessions")
-        sessions = db.list_sessions()
+        st.subheader("Manage Sessions")
         if sessions:
             st.dataframe(pd.DataFrame(sessions), use_container_width=True)
         else:
-            st.info("No sessions yet. Create one below.")
-        name = st.text_input("New Session Name", key="new_session_name")
-        if st.button("Create Session", key="btn_create_session") and name:
-            db.create_session(name)
-            st.success(f"Session '{name}' created.")
+            st.info("No sessions yet.")
+        new_name = st.text_input("New Session Name", key="new_session_name")
+        if st.button("Create Session", key="btn_create_session") and new_name:
+            db.create_session(new_name)
+            st.success(f"Session '{new_name}' created.")
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             db.conn.execute("DELETE FROM payouts")
             db.conn.execute("DELETE FROM buyins")
@@ -100,121 +105,81 @@ def main():
             st.success("All sessions, buy-ins, and payouts cleared.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Add Buy-in with batching
-    with tabs[1]:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("💰 Add Buy-in (Queue & Batch)")
-        session_ids = [s['session_id'] for s in db.list_sessions()]
-        if not session_ids:
-            st.warning("Please create a session first.")
-        else:
-            sess = st.selectbox("Select Session", session_ids, key="add_buyin_session")
+    # Tab 1: Add Buy-in
+    if selected_session:
+        with tabs[1]:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.subheader(f"Add Buy-in to Session: {selected_session}")
             mode = st.radio("Mode", ["Auto-parse Zelle Message", "Manual Entry"], key="add_buyin_mode")
             if mode == "Auto-parse Zelle Message":
-                msg = st.text_area("Paste Zelle message", key="queue_auto_msg")
-                if st.button("Queue Parsed Buy-in", key="queue_parse_btn"):
-                    rec = ZelleMessageParser.parse(msg)
-                    if rec:
-                        rec['session_id'] = sess
-                        st.session_state['buyin_queue'].append(rec)
-                        st.success(f"Queued: {rec['sender']} - $ {rec['amount']}")
+                msg = st.text_area("Paste Zelle message", key="auto_msg")
+                if st.button("Parse & Add Buy-in", key="auto_add_btn"):
+                    record = ZelleMessageParser.parse(msg)
+                    if record:
+                        record['session_id'] = selected_session
+                        db.add_buyin(record)
+                        st.success(f"Added: {record['sender']} - $ {record['amount']}")
                     else:
                         st.error("Invalid message.")
             else:
-                player = st.text_input("Player Name", key="queue_player")
-                amt = st.number_input("Amount", min_value=0.0, format="%.2f", key="queue_amt")
-                notes = st.text_input("Notes (optional)", key="queue_notes")
-                if st.button("Queue Manual Buy-in", key="queue_manual_btn"):
-                    record = {
-                        'session_id': sess,
-                        'sender': player,
-                        'amount': amt,
-                        'timestamp': datetime.now().isoformat(),
-                        'notes': notes
-                    }
-                    st.session_state['buyin_queue'].append(record)
-                    st.success(f"Queued: {player} - $ {amt}")
-            # Show pending queue
-            if st.session_state['buyin_queue']:
-                st.subheader("Pending Buy-ins")
-                st.dataframe(pd.DataFrame(st.session_state['buyin_queue']), use_container_width=True)
-                if st.button("Submit All Buy-ins", key="submit_queue_btn"):
-                    for rec in st.session_state['buyin_queue']:
-                        db.add_buyin(rec)
-                    st.session_state['buyin_queue'].clear()
-                    st.success("All queued buy-ins submitted.")
-        st.markdown("</div>", unsafe_allow_html=True)
+                player = st.text_input("Player Name", key="man_player")
+                amt = st.number_input("Amount", min_value=0.0, format="%.2f", key="man_amt")
+                notes = st.text_input("Notes (optional)", key="man_notes")
+                if st.button("Add Manual Buy-in", key="man_add_btn"):
+                    db.add_manual_buyin(selected_session, player, amt, datetime.now(), notes)
+                    st.success(f"Added: {player} - $ {amt}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    # Sessions Overview
+    # Tab 2: Sessions Overview
     with tabs[2]:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("📋 Sessions")
-        df_sess = pd.DataFrame(db.list_sessions())
-        st.dataframe(df_sess, use_container_width=True)
-        if not df_sess.empty:
-            vs = st.selectbox("Select Session", df_sess['session_id'], key="vs_sess")
-            df_b = pd.DataFrame(db.get_buyins(vs))
-            st.dataframe(df_b, use_container_width=True)
+        st.subheader("Sessions Overview")
+        df_all = pd.DataFrame(sessions)
+        st.dataframe(df_all, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Payouts & Profit/Loss
-    with tabs[3]:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("📈 Profit/Loss & Details")
-        sess_ids = [s['session_id'] for s in db.list_sessions()]
-        if sess_ids:
-            session = st.selectbox("Select Session", sess_ids, key="pl_sess")
-            buyins = db.get_buyins(session)
+    # Tab 3: Payouts
+    if selected_session:
+        with tabs[3]:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.subheader(f"Profit/Loss for Session: {selected_session}")
+            # Fetch and display
+            buyins = db.get_buyins(selected_session)
             df_buyins = pd.DataFrame(buyins)
             if df_buyins.empty:
-                st.info("No buy-ins recorded for this session.")
+                st.info("No buy-ins recorded.")
             else:
                 summary = df_buyins.groupby('player')['amount'].sum().reset_index().rename(columns={'amount':'total_buyin'})
                 st.subheader("Enter Ending Stacks")
                 ending = {}
                 for _, row in summary.iterrows():
                     ending[row['player']] = st.number_input(
-                        f"{row['player']}'s Ending Stack", min_value=0.0, format="%.2f", key=f"end_{session}_{row['player']}"
+                        f"{row['player']}'s Ending Stack", min_value=0.0, format="%.2f", key=f"end_{row['player']}"
                     )
                 if st.button("Compute Profit/Loss", key="compute_pl_btn"):
                     pl_results = []
                     for _, row in summary.iterrows():
                         pl = ending[row['player']] - row['total_buyin']
-                        pl_results.append({
-                            'player': row['player'],
-                            'total_buyin': row['total_buyin'],
-                            'ending_stack': ending[row['player']],
-                            'profit_loss': pl
-                        })
-                    # Persist results for Settlement tab
+                        pl_results.append({'player':row['player'],'total_buyin':row['total_buyin'],'ending_stack':ending[row['player']],'profit_loss':pl})
                     st.session_state['pl'] = pl_results
                     df_pl = pd.DataFrame(pl_results)
                     st.subheader("Profit/Loss Summary")
                     st.dataframe(df_pl, use_container_width=True)
-                    st.download_button(
-                        "Download Profit/Loss Report",
-                        data=df_pl.to_csv(index=False).encode('utf-8'),
-                        file_name=f"profit_loss_{session}.csv",
-                        mime='text/csv',
-                        key="download_pl_csv"
-                    )
-                    st.subheader("Buy-ins Details (including Zelle notes)")
+                    st.download_button("Download P/L", data=df_pl.to_csv(index=False).encode('utf-8'), file_name=f"pl_{selected_session}.csv", mime='text/csv', key="dl_pl")
+                    st.subheader("Buy-ins Details")
                     st.dataframe(df_buyins[['player','amount','timestamp','notes']], use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    # Settlement
+    # Tab 4: Settlement
     with tabs[4]:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("🔄 Settlement")
+        st.subheader("Settlement")
         if 'pl' in st.session_state:
             for r in st.session_state['pl']:
-                msg = f"{r['player']} {'receives' if r['profit_loss']>0 else 'owes'} $ {abs(r['profit_loss']):.2f}"
-                if r['profit_loss']>0:
-                    st.success(msg)
-                elif r['profit_loss']<0:
-                    st.error(msg)
-                else:
-                    st.info(msg)
+                status = f"{r['player']} {'receives' if r['profit_loss']>0 else 'owes'} $ {abs(r['profit_loss']):.2f}"
+                if r['profit_loss']>0: st.success(status)
+                elif r['profit_loss']<0: st.error(status)
+                else: st.info(status)
         else:
             st.info("Run Profit/Loss first.")
         st.markdown("</div>", unsafe_allow_html=True)
