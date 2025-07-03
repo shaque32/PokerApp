@@ -198,7 +198,7 @@ def main():
                         mime='text/csv',
                         key="download_pl_csv"
                     )
-                    st.subheader("Buy-ins Details (including Zelle notes)") 
+                    st.subheader("Buy-ins Details (including Zelle notes)")
                     st.dataframe(df_buyins[['player','amount','timestamp','notes']], use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
