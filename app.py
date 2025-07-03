@@ -197,14 +197,8 @@ def main():
                         file_name=f"profit_loss_{session}.csv",
                         mime='text/csv',
                         key="download_pl_csv"
-                    )(
-                        "Download Profit/Loss Report",
-                        data=df_pl.to_csv(index=False).encode('utf-8'),
-                        file_name=f"profit_loss_{session}.csv",
-                        mime='text/csv',
-                        key="download_pl_csv"
                     )
-                    st.subheader("Buy-ins Details (including Zelle notes)")
+                    st.subheader("Buy-ins Details (including Zelle notes)") 
                     st.dataframe(df_buyins[['player','amount','timestamp','notes']], use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
