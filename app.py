@@ -143,7 +143,6 @@ def main():
         with tabs[3]:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.subheader(f"Profit/Loss for Session: {selected_session}")
-            # Fetch and display
             buyins = db.get_buyins(selected_session)
             df_buyins = pd.DataFrame(buyins)
             if df_buyins.empty:
@@ -175,11 +174,21 @@ def main():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Settlement")
         if 'pl' in st.session_state:
+            df_settle = pd.DataFrame(st.session_state['pl'])
+            total_receive = df_settle[df_settle['profit_loss']>0]['profit_loss'].sum()
+            total_send = -df_settle[df_settle['profit_loss']<0]['profit_loss'].sum()
+            cols = st.columns(2)
+            cols[0].metric("Total to Receive", f"$ {total_receive:.2f}")
+            cols[1].metric("Total to Send", f"$ {total_send:.2f}")
+            st.markdown("---")
             for r in st.session_state['pl']:
                 status = f"{r['player']} {'receives' if r['profit_loss']>0 else 'owes'} $ {abs(r['profit_loss']):.2f}"
-                if r['profit_loss']>0: st.success(status)
-                elif r['profit_loss']<0: st.error(status)
-                else: st.info(status)
+                if r['profit_loss']>0:
+                    st.success(status)
+                elif r['profit_loss']<0:
+                    st.error(status)
+                else:
+                    st.info(status)
         else:
             st.info("Run Profit/Loss first.")
         st.markdown("</div>", unsafe_allow_html=True)
