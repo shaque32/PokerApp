@@ -110,7 +110,7 @@ def main():
         new_name = st.text_input("New Session Name", key="new_session_name")
         if st.button("Create Session", key="btn_create_session") and new_name:
             db.create_session(new_name)
-            st.session_state['current_session'] = new_name
+            st.success(f"Session '{new_name}' created.")
             
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             db.conn.execute("DELETE FROM payouts")
@@ -119,7 +119,6 @@ def main():
             db.conn.commit()
             st.session_state['pl_results'] = None
             st.session_state['ending_stacks'] = {}
-            st.session_state['current_session'] = None
             
         st.markdown("</div>", unsafe_allow_html=True)
 
