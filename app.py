@@ -69,6 +69,12 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Initialize storage for P/L and ending stacks
+if 'pl_results' not in st.session_state:
+    st.session_state['pl_results'] = None
+if 'ending_stacks' not in st.session_state:
+    st.session_state['ending_stacks'] = {}
+
 # Main app
 def main():
     st.markdown("<div class='poker-header'>♠️ Poker Buy-ins Manager ♥️</div>", unsafe_allow_html=True)
@@ -77,24 +83,19 @@ def main():
     # Global session selector
     sessions = db.list_sessions()
     session_ids = [s['session_id'] for s in sessions]
-
-    # Use session_state to remember selected session
-    if 'selected_session' not in st.session_state:
-        st.session_state['selected_session'] = session_ids[0] if session_ids else None
-
     if session_ids:
+        if 'current_session' not in st.session_state or st.session_state['current_session'] not in session_ids:
+            st.session_state['current_session'] = session_ids[0]
         selected_session = st.selectbox(
             "Select Session",
             session_ids,
+            index=session_ids.index(st.session_state['current_session']),
             key="current_session",
-            index=session_ids.index(st.session_state['selected_session']) if st.session_state['selected_session'] in session_ids else 0,
-            on_change=lambda: st.session_state.update({'selected_session': st.session_state['current_session']})
+            on_change=lambda: st.session_state.update({'current_session': st.session_state['current_session']})
         )
-        st.session_state['selected_session'] = selected_session
     else:
         st.warning("No sessions available. Please create one in Manage Sessions.")
         selected_session = None
-        st.session_state['selected_session'] = None
 
     tabs = st.tabs(["Manage Sessions", "Add Buy-in", "Sessions", "Payouts", "Settlement"])
 
@@ -109,16 +110,16 @@ def main():
         new_name = st.text_input("New Session Name", key="new_session_name")
         if st.button("Create Session", key="btn_create_session") and new_name:
             db.create_session(new_name)
-            st.success(f"Session '{new_name}' created.")
-            st.session_state['selected_session'] = new_name
+            st.session_state['current_session'] = new_name
             st.experimental_rerun()
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             db.conn.execute("DELETE FROM payouts")
             db.conn.execute("DELETE FROM buyins")
             db.conn.execute("DELETE FROM sessions")
             db.conn.commit()
-            st.success("All sessions, buy-ins, and payouts cleared.")
-            st.session_state['selected_session'] = None
+            st.session_state['pl_results'] = None
+            st.session_state['ending_stacks'] = {}
+            st.session_state['current_session'] = None
             st.experimental_rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -166,22 +167,34 @@ def main():
                 st.info("No buy-ins recorded.")
             else:
                 summary = df_buyins.groupby('player')['amount'].sum().reset_index().rename(columns={'amount':'total_buyin'})
-                st.subheader("Enter Ending Stacks")
-                ending = {}
-                for _, row in summary.iterrows():
-                    ending[row['player']] = st.number_input(
-                        f"{row['player']}'s Ending Stack", min_value=0.0, format="%.2f", key=f"end_{row['player']}"
-                    )
-                if st.button("Compute Profit/Loss", key="compute_pl_btn"):
-                    pl_results = []
+                if st.session_state['pl_results'] is None:
+                    st.subheader("Enter Ending Stacks")
                     for _, row in summary.iterrows():
-                        pl = ending[row['player']] - row['total_buyin']
-                        pl_results.append({'player':row['player'],'total_buyin':row['total_buyin'],'ending_stack':ending[row['player']],'profit_loss':pl})
-                    st.session_state['pl'] = pl_results
-                    df_pl = pd.DataFrame(pl_results)
+                        # preload existing stack if available
+                        default = st.session_state['ending_stacks'].get(row['player'], 0.0)
+                        val = st.number_input(
+                            f"{row['player']}'s Ending Stack", min_value=0.0, format="%.2f",
+                            value=default,
+                            key=f"end_{row['player']}"
+                        )
+                        st.session_state['ending_stacks'][row['player']] = val
+                    if st.button("Compute Profit/Loss", key="compute_pl_btn"):
+                        pl = []
+                        for _, row in summary.iterrows():
+                            amt = st.session_state['ending_stacks'][row['player']]
+                            diff = amt - row['total_buyin']
+                            pl.append({'player':row['player'],'total_buyin':row['total_buyin'],'ending_stack':amt,'profit_loss':diff})
+                        st.session_state['pl_results'] = pl
+                        st.experimental_rerun()
+                else:
+                    # show stored results directly
+                    df_pl = pd.DataFrame(st.session_state['pl_results'])
                     st.subheader("Profit/Loss Summary")
                     st.dataframe(df_pl, use_container_width=True)
-                    st.download_button("Download P/L", data=df_pl.to_csv(index=False).encode('utf-8'), file_name=f"pl_{selected_session}.csv", mime='text/csv', key="dl_pl")
+                    st.download_button(
+                        "Download P/L", data=df_pl.to_csv(index=False).encode('utf-8'),
+                        file_name=f"pl_{selected_session}.csv", mime='text/csv', key="dl_pl"
+                    )
                     st.subheader("Buy-ins Details")
                     st.dataframe(df_buyins[['player','amount','timestamp','notes']], use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
@@ -190,15 +203,15 @@ def main():
     with tabs[4]:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Settlement")
-        if 'pl' in st.session_state:
-            df_settle = pd.DataFrame(st.session_state['pl'])
+        if st.session_state['pl_results'] is not None:
+            df_settle = pd.DataFrame(st.session_state['pl_results'])
             total_receive = df_settle[df_settle['profit_loss']>0]['profit_loss'].sum()
             total_send = -df_settle[df_settle['profit_loss']<0]['profit_loss'].sum()
             cols = st.columns(2)
             cols[0].metric("Total to Receive", f"$ {total_receive:.2f}")
             cols[1].metric("Total to Send", f"$ {total_send:.2f}")
             st.markdown("---")
-            for r in st.session_state['pl']:
+            for r in st.session_state['pl_results']:
                 status = f"{r['player']} {'receives' if r['profit_loss']>0 else 'owes'} $ {abs(r['profit_loss']):.2f}"
                 if r['profit_loss']>0:
                     st.success(status)
