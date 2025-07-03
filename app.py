@@ -120,7 +120,7 @@ def main():
             st.session_state['pl_results'] = None
             st.session_state['ending_stacks'] = {}
             st.session_state['current_session'] = None
-            st.experimental_rerun()
+            
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Tab 1: Add Buy-in
