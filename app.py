@@ -6,11 +6,11 @@ from db import DatabaseManager
 
 # Page configuration
 st.set_page_config(
-    page_title="Poker Buy-ins Manager", 
+    page_title="Poker Buy-ins Manager",
     layout="wide"
 )
 
-# Custom sleek/gambling-themed CSS
+# Responsive sleek/gambling-themed CSS
 st.markdown(
     """
     <style>
@@ -36,18 +36,20 @@ st.markdown(
         border-radius: 8px;
         padding: 1.5rem;
         margin-bottom: 2rem;
+        max-width: 100%;
     }
     /* Button styling */
-    .stButton>button {
+    .stButton > button {
         background-color: #e63946;
         color: #f0f0f0;
         font-weight: 500;
         border: none;
         border-radius: 4px;
         padding: 0.6rem 1.2rem;
+        width: auto;
         transition: background 0.3s;
     }
-    .stButton>button:hover {
+    .stButton > button:hover {
         background-color: #d62828;
     }
     /* Dataframe styling */
@@ -55,8 +57,27 @@ st.markdown(
         background-color: rgba(255, 255, 255, 0.1);
         color: #f0f0f0;
     }
+    /* Responsive adjustments */
+    @media only screen and (max-width: 768px) {
+        .poker-header {
+            font-size: 1.8rem;
+            letter-spacing: 1px;
+        }
+        .card {
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        .stButton > button {
+            width: 100% !important;
+            margin-bottom: 0.5rem;
+        }
+        .stDataFrame table {
+            font-size: 0.8rem;
+        }
+    }
     </style>
-    """, unsafe_allow_html=True
+    """,
+    unsafe_allow_html=True
 )
 
 # Main app
@@ -72,7 +93,7 @@ def main():
         st.subheader("🎴 Manage Sessions")
         sessions = db.list_sessions()
         if sessions:
-            st.dataframe(pd.DataFrame(sessions))
+            st.dataframe(pd.DataFrame(sessions), use_container_width=True)
         else:
             st.info("No sessions yet. Create one below.")
         # Create session
@@ -83,17 +104,10 @@ def main():
         # Clear all sessions
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             # Delete sessions, buyins, and payouts
-            if hasattr(db, 'conn'):
-                db.conn.execute("DELETE FROM payouts")
-                db.conn.execute("DELETE FROM buyins")
-                db.conn.execute("DELETE FROM sessions")
-                db.conn.commit()
-            else:
-                # Fallback using DatabaseManager methods if available
-                try:
-                    db.clear_sessions()
-                except Exception:
-                    pass
+            db.conn.execute("DELETE FROM payouts")
+            db.conn.execute("DELETE FROM buyins")
+            db.conn.execute("DELETE FROM sessions")
+            db.conn.commit()
             st.success("All sessions, buy-ins, and payouts cleared.")
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -131,11 +145,11 @@ def main():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("📋 Sessions")
         df_sess = pd.DataFrame(db.list_sessions())
-        st.dataframe(df_sess)
+        st.dataframe(df_sess, use_container_width=True)
         if not df_sess.empty:
             vs = st.selectbox("Select Session", df_sess['session_id'], key="vs_sess")
             df_b = pd.DataFrame(db.get_buyins(vs))
-            st.dataframe(df_b)
+            st.dataframe(df_b, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Payouts
@@ -148,11 +162,18 @@ def main():
             st.info("No buy-ins.")
         else:
             sum_df = df_bi.groupby('player')['amount'].sum().reset_index().rename(columns={'amount':'buyin'})
-            ends = {r['player']: st.number_input(f"{r['player']} End", min_value=0.0, format="%.2f", key=f"end_{sess}_{r['player']}") for _,r in sum_df.iterrows()}
+            ends = {}
+            for _, r in sum_df.iterrows():
+                ends[r['player']] = st.number_input(
+                    f"{r['player']} End", min_value=0.0, format="%.2f", key=f"end_{sess}_{r['player']}"
+                )
             if st.button("Compute", key="compute_pl"):
-                res = [{'player':p,'buyin':b,'end': ends[p],'pl': ends[p]-b} for p,b in zip(sum_df['player'], sum_df['buyin'])]
+                res = []
+                for _, r in sum_df.iterrows():
+                    p = r['player']; b = r['buyin']; e = ends[p]
+                    res.append({'player': p, 'buyin': b, 'end': e, 'pl': e - b})
                 st.session_state['pl'] = res
-                st.dataframe(pd.DataFrame(res))
+                st.dataframe(pd.DataFrame(res), use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Settlement
@@ -162,9 +183,12 @@ def main():
         if 'pl' in st.session_state:
             for r in st.session_state['pl']:
                 msg = f"{r['player']} {'receives' if r['pl']>0 else 'owes'} $ {abs(r['pl']):.2f}"
-                if r['pl']>0: st.success(msg)
-                elif r['pl']<0: st.error(msg)
-                else: st.info(msg)
+                if r['pl']>0:
+                    st.success(msg)
+                elif r['pl']<0:
+                    st.error(msg)
+                else:
+                    st.info(msg)
         else:
             st.info("Run Profit/Loss first.")
         st.markdown("</div>", unsafe_allow_html=True)
