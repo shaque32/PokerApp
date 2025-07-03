@@ -186,10 +186,18 @@ def main():
                             'ending_stack': ending[row['player']],
                             'profit_loss': pl
                         })
+                    # Persist results for Settlement tab
+                    st.session_state['pl'] = pl_results
                     df_pl = pd.DataFrame(pl_results)
                     st.subheader("Profit/Loss Summary")
                     st.dataframe(df_pl, use_container_width=True)
                     st.download_button(
+                        "Download Profit/Loss Report",
+                        data=df_pl.to_csv(index=False).encode('utf-8'),
+                        file_name=f"profit_loss_{session}.csv",
+                        mime='text/csv',
+                        key="download_pl_csv"
+                    )(
                         "Download Profit/Loss Report",
                         data=df_pl.to_csv(index=False).encode('utf-8'),
                         file_name=f"profit_loss_{session}.csv",
