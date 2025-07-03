@@ -77,11 +77,24 @@ def main():
     # Global session selector
     sessions = db.list_sessions()
     session_ids = [s['session_id'] for s in sessions]
+
+    # Use session_state to remember selected session
+    if 'selected_session' not in st.session_state:
+        st.session_state['selected_session'] = session_ids[0] if session_ids else None
+
     if session_ids:
-        selected_session = st.selectbox("Select Session", session_ids, key="current_session")
+        selected_session = st.selectbox(
+            "Select Session",
+            session_ids,
+            key="current_session",
+            index=session_ids.index(st.session_state['selected_session']) if st.session_state['selected_session'] in session_ids else 0,
+            on_change=lambda: st.session_state.update({'selected_session': st.session_state['current_session']})
+        )
+        st.session_state['selected_session'] = selected_session
     else:
         st.warning("No sessions available. Please create one in Manage Sessions.")
         selected_session = None
+        st.session_state['selected_session'] = None
 
     tabs = st.tabs(["Manage Sessions", "Add Buy-in", "Sessions", "Payouts", "Settlement"])
 
@@ -97,12 +110,16 @@ def main():
         if st.button("Create Session", key="btn_create_session") and new_name:
             db.create_session(new_name)
             st.success(f"Session '{new_name}' created.")
+            st.session_state['selected_session'] = new_name
+            st.experimental_rerun()
         if st.button("Clear All Sessions", key="btn_clear_sessions"):
             db.conn.execute("DELETE FROM payouts")
             db.conn.execute("DELETE FROM buyins")
             db.conn.execute("DELETE FROM sessions")
             db.conn.commit()
             st.success("All sessions, buy-ins, and payouts cleared.")
+            st.session_state['selected_session'] = None
+            st.experimental_rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Tab 1: Add Buy-in
